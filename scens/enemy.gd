@@ -5,14 +5,25 @@ var health: int
 
 @onready var anim_player: AnimationPlayer = $AnimationPlayer
 
+var knockback: Vector2 = Vector2.ZERO
+
+func apply_knockback(force: Vector2) -> void:
+	knockback = force
+
+func _physics_process(delta: float) -> void:
+	if knockback.length() > 5.0:
+		velocity = knockback
+		knockback = knockback.lerp(Vector2.ZERO, 15.0 * delta)
+		move_and_slide()
+
 func _ready() -> void:
 	health = max_health
 	add_to_group("enemies")
 	anim_player.animation_finished.connect(_on_animation_finished)
 	anim_player.play("idle")
 
-func take_damage(amount: int) -> void:
-	if health <= 0: return # Already dead
+func take_damage(amount: int, drag_vector: Vector2 = Vector2.ZERO) -> bool:
+	if health <= 0: return false # Already dead
 	
 	health -= amount
 	print("Enemy took %d damage! Health remaining: %d" % [amount, health])
@@ -23,6 +34,8 @@ func take_damage(amount: int) -> void:
 		die()
 	else:
 		anim_player.play("take_hit")
+		
+	return true
 
 func spawn_hit_effect() -> void:
 	var p = CPUParticles2D.new()

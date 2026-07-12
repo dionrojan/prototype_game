@@ -5,6 +5,10 @@
 [ext_resource type="Texture2D" path="res://sprites/skeleton_take_hit.png" id="3_hit"]
 [ext_resource type="Texture2D" path="res://sprites/skeleton_death.png" id="4_death"]
 
+[ext_resource type="Texture2D" path="res://sprites/skeleton_block.png" id="5_block"]
+[ext_resource type="Texture2D" path="res://sprites/arrow.png" id="6_arrow"]
+[ext_resource type="Texture2D" path="res://sprites/arrowactive.png" id="7_arrow_active"]
+
 [sub_resource type="Animation" id="Animation_idle"]
 resource_name = "idle"
 length = 0.4
@@ -126,8 +130,49 @@ tracks/2/keys = {
 "values": [0, 1, 2, 3]
 }
 
+[sub_resource type="Animation" id="Animation_block"]
+resource_name = "block"
+length = 0.4
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Sprite:texture")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [ExtResource("5_block")]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Sprite:hframes")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [4]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Sprite:frame")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.1, 0.2, 0.3),
+"transitions": PackedFloat32Array(1, 1, 1, 1),
+"update": 1,
+"values": [0, 1, 2, 3]
+}
+
 [sub_resource type="AnimationLibrary" id="AnimationLibrary_skeleton"]
 _data = {
+"block": SubResource("Animation_block"),
 "death": SubResource("Animation_death"),
 "idle": SubResource("Animation_idle"),
 "take_hit": SubResource("Animation_hit")
@@ -156,3 +201,22 @@ autoplay = "idle"
 position = Vector2(0, -7)
 rotation = 1.5708
 shape = SubResource("CapsuleShape2D_enemy")
+[node name="ArrowTop" type="Sprite2D" parent="."]
+position = Vector2(0, -40)
+rotation = -1.5708
+scale = Vector2(0.3, 0.3)
+texture = ExtResource("6_arrow")
+
+[node name="ArrowLeft" type="Sprite2D" parent="."]
+position = Vector2(-25, -18)
+rotation = 3.14159
+scale = Vector2(0.3, 0.3)
+texture = ExtResource("6_arrow")
+
+[node name="ArrowRight" type="Sprite2D" parent="."]
+position = Vector2(25, -18)
+scale = Vector2(0.3, 0.3)
+texture = ExtResource("6_arrow")
+
+[node name="BlockTimer" type="Timer" parent="."]
+one_shot = true

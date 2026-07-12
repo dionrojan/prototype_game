@@ -21,6 +21,11 @@ var is_dragging: bool = false
 var drag_start: Vector2 = Vector2.ZERO
 @export var min_drag_distance: float = 30.0
 
+var knockback: Vector2 = Vector2.ZERO
+
+func apply_knockback(force: Vector2) -> void:
+	knockback = force
+
 func _ready() -> void:
 	health = max_health
 	anim_player.animation_finished.connect(_on_animation_finished)
@@ -66,11 +71,20 @@ func _input(event: InputEvent) -> void:
 							var closest = Geometry2D.get_closest_point_to_segment(enemy.global_position, drag_start, drag_end)
 							if closest.distance_to(enemy.global_position) < 30.0:
 								if enemy.has_method("take_damage"):
-									enemy.take_damage(attack_damage)
+									var hit_success = enemy.take_damage(attack_damage, drag_vector)
+									if hit_success:
+										if enemy.has_method("apply_knockback"):
+											var kb_dir = (enemy.global_position - global_position).normalized()
+											enemy.apply_knockback(kb_dir * 150.0)
+									else:
+										# Player is knocked back because attack was blocked
+										var kb_dir = (global_position - enemy.global_position).normalized()
+										apply_knockback(kb_dir * 250.0)
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if is_attacking:
-		velocity = Vector2.ZERO
+		velocity = knockback
+		knockback = knockback.lerp(Vector2.ZERO, 10.0 * delta)
 		move_and_slide()
 		return
 
@@ -84,16 +98,20 @@ func _physics_process(_delta: float) -> void:
 	velocity = direction * speed
 	velocity.y *= 0.5
 	
+	# Add knockback
+	velocity += knockback
+	knockback = knockback.lerp(Vector2.ZERO, 10.0 * delta)
+	
 	move_and_slide()
 
-	# Flip sprite depending on horizontal movement
-	if velocity.x < 0:
+	# Flip sprite depending on horizontal movement input
+	if direction.x < 0:
 		sprite.flip_h = true
-	elif velocity.x > 0:
+	elif direction.x > 0:
 		sprite.flip_h = false
 
 	# Play appropriate animation
-	if velocity != Vector2.ZERO:
+	if direction != Vector2.ZERO:
 		if is_running:
 			anim_player.play("run")
 		else:
