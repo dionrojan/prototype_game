@@ -5,22 +5,68 @@ extends CharacterBody2D
 
 @onready var sprite: Sprite2D = $Sprite
 @onready var anim_player: AnimationPlayer = $AnimationPlayer
+@onready var swipe_trail: CPUParticles2D = $SwipeTrail
+
+@export var max_health: int = 100
+var health: int
+
+@export var attack_range: float = 40.0
+@export var attack_damage: int = 10
 
 # State variables
 var is_running: bool = false
 var is_attacking: bool = false
 
+var is_dragging: bool = false
+var drag_start: Vector2 = Vector2.ZERO
+@export var min_drag_distance: float = 30.0
+
 func _ready() -> void:
+	health = max_health
 	anim_player.animation_finished.connect(_on_animation_finished)
 	anim_player.play("idle")
+
+func _process(_delta: float) -> void:
+	if is_dragging:
+		swipe_trail.global_position = get_global_mouse_position()
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("toggle_run"):
 		is_running = !is_running
 	
-	if event.is_action_pressed("attack") and not is_attacking:
-		is_attacking = true
-		anim_player.play("attack")
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			is_dragging = true
+			drag_start = get_global_mouse_position()
+			swipe_trail.global_position = drag_start
+			swipe_trail.emitting = true
+		else:
+			if is_dragging:
+				is_dragging = false
+				swipe_trail.emitting = false
+				var drag_end = get_global_mouse_position()
+				var drag_vector = drag_end - drag_start
+				
+				if drag_vector.length() >= min_drag_distance and not is_attacking:
+					is_attacking = true
+					
+					# Determine horizontal or vertical slash
+					if abs(drag_vector.x) > abs(drag_vector.y):
+						anim_player.play("attack_h")
+						sprite.flip_h = drag_vector.x < 0
+					else:
+						anim_player.play("attack_v")
+						
+					# Check enemies intersecting the drag line
+					var enemies = get_tree().get_nodes_in_group("enemies")
+					for enemy in enemies:
+						var dist_to_player = global_position.distance_to(enemy.global_position)
+						if dist_to_player <= attack_range:
+							# Check if drag line passes through enemy
+							var closest = Geometry2D.get_closest_point_to_segment(enemy.global_position, drag_start, drag_end)
+							if closest.distance_to(enemy.global_position) < 30.0:
+								if enemy.has_method("take_damage"):
+									enemy.take_damage(attack_damage)
 
 func _physics_process(_delta: float) -> void:
 	if is_attacking:
@@ -56,5 +102,5 @@ func _physics_process(_delta: float) -> void:
 		anim_player.play("idle")
 
 func _on_animation_finished(anim_name: StringName) -> void:
-	if anim_name == "attack":
+	if anim_name == "attack_h" or anim_name == "attack_v":
 		is_attacking = false
