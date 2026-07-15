@@ -4,6 +4,7 @@ extends CharacterBody2D
 var health: int
 
 @onready var anim_player: AnimationPlayer = $AnimationPlayer
+@onready var sprite: Sprite2D = $Sprite
 
 var knockback: Vector2 = Vector2.ZERO
 
@@ -15,6 +16,14 @@ func _physics_process(delta: float) -> void:
 		velocity = knockback
 		knockback = knockback.lerp(Vector2.ZERO, 15.0 * delta)
 		move_and_slide()
+		
+	var players = get_tree().get_nodes_in_group("player")
+	if players.size() > 0:
+		var player = players[0]
+		if player.global_position.x < global_position.x:
+			sprite.flip_h = true
+		else:
+			sprite.flip_h = false
 
 func _ready() -> void:
 	health = max_health

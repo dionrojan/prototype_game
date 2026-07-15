@@ -18,16 +18,69 @@ var is_running: bool = false
 var is_attacking: bool = false
 
 var is_dragging: bool = false
+var is_blocking: bool = false
 var drag_start: Vector2 = Vector2.ZERO
 @export var min_drag_distance: float = 30.0
 
+var is_taking_hit: bool = false
+var is_dead: bool = false
 var knockback: Vector2 = Vector2.ZERO
 
 func apply_knockback(force: Vector2) -> void:
 	knockback = force
+	
+func take_damage(amount: int) -> void:
+	if is_dead: return
+	
+	# Reset states so player doesn't get permanently stuck if an animation is interrupted!
+	is_attacking = false
+	is_dragging = false
+	swipe_trail.emitting = false
+	
+	health -= amount
+	print("Player took %d damage! Health: %d" % [amount, health])
+	if health <= 0:
+		is_dead = true
+		print("Player died!")
+		anim_player.play("death")
+	else:
+		is_taking_hit = true
+		anim_player.play("take_hit")
+
 
 func _ready() -> void:
+	add_to_group("player")
 	health = max_health
+	
+	# Dynamically create take_hit animation
+	var anim_hit = Animation.new()
+	anim_hit.length = 0.3
+	var track_idx = anim_hit.add_track(Animation.TYPE_VALUE)
+	anim_hit.track_set_path(track_idx, "Sprite:texture")
+	anim_hit.track_insert_key(track_idx, 0.0, preload("res://sprites/player_hit.png"))
+	track_idx = anim_hit.add_track(Animation.TYPE_VALUE)
+	anim_hit.track_set_path(track_idx, "Sprite:hframes")
+	anim_hit.track_insert_key(track_idx, 0.0, 1)
+	track_idx = anim_hit.add_track(Animation.TYPE_VALUE)
+	anim_hit.track_set_path(track_idx, "Sprite:frame")
+	anim_hit.track_insert_key(track_idx, 0.0, 0)
+	anim_player.get_animation_library("").add_animation("take_hit", anim_hit)
+	
+	# Dynamically create death animation
+	var anim_death = Animation.new()
+	anim_death.length = 1.0
+	track_idx = anim_death.add_track(Animation.TYPE_VALUE)
+	anim_death.track_set_path(track_idx, "Sprite:texture")
+	anim_death.track_insert_key(track_idx, 0.0, preload("res://sprites/player_death.png"))
+	track_idx = anim_death.add_track(Animation.TYPE_VALUE)
+	anim_death.track_set_path(track_idx, "Sprite:hframes")
+	anim_death.track_insert_key(track_idx, 0.0, 10)
+	track_idx = anim_death.add_track(Animation.TYPE_VALUE)
+	anim_death.track_set_path(track_idx, "Sprite:frame")
+	for i in range(10):
+		anim_death.track_insert_key(track_idx, i * 0.1, i)
+	anim_player.get_animation_library("").add_animation("death", anim_death)
+	
 	anim_player.animation_finished.connect(_on_animation_finished)
 	anim_player.play("idle")
 
@@ -36,17 +89,25 @@ func _process(_delta: float) -> void:
 		swipe_trail.global_position = get_global_mouse_position()
 
 func _input(event: InputEvent) -> void:
+	if is_dead or is_taking_hit: return
+	
 	if event.is_action_pressed("toggle_run"):
 		is_running = !is_running
 	
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		if event.pressed:
-			is_dragging = true
-			drag_start = get_global_mouse_position()
-			swipe_trail.global_position = drag_start
-			swipe_trail.emitting = true
-		else:
-			if is_dragging:
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_RIGHT:
+			if event.pressed:
+				is_blocking = true
+			else:
+				is_blocking = false
+				
+		elif event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed:
+				is_dragging = true
+				drag_start = get_global_mouse_position()
+				swipe_trail.global_position = drag_start
+				swipe_trail.emitting = true
+			elif is_dragging:
 				is_dragging = false
 				swipe_trail.emitting = false
 				var drag_end = get_global_mouse_position()
@@ -55,10 +116,13 @@ func _input(event: InputEvent) -> void:
 				if drag_vector.length() >= min_drag_distance and not is_attacking:
 					is_attacking = true
 					
+					# Make player face the side where the attack was drawn
+					var drag_center = (drag_start + drag_end) / 2.0
+					sprite.flip_h = drag_center.x < global_position.x
+					
 					# Determine horizontal or vertical slash
 					if abs(drag_vector.x) > abs(drag_vector.y):
 						anim_player.play("attack_h")
-						sprite.flip_h = drag_vector.x < 0
 					else:
 						anim_player.play("attack_v")
 						
@@ -66,22 +130,34 @@ func _input(event: InputEvent) -> void:
 					var enemies = get_tree().get_nodes_in_group("enemies")
 					for enemy in enemies:
 						var dist_to_player = global_position.distance_to(enemy.global_position)
-						if dist_to_player <= attack_range:
-							# Check if drag line passes through enemy
-							var closest = Geometry2D.get_closest_point_to_segment(enemy.global_position, drag_start, drag_end)
-							if closest.distance_to(enemy.global_position) < 30.0:
+						# Make attack range more forgiving for isometric perspective
+						if dist_to_player <= attack_range * 2.0:
+							# Check if drag line passes through enemy's visual body (shifted up from feet)
+							var enemy_body_center = enemy.global_position + Vector2(0, -30)
+							var closest = Geometry2D.get_closest_point_to_segment(enemy_body_center, drag_start, drag_end)
+							
+							# Generous hit radius for phone/mouse swiping
+							if closest.distance_to(enemy_body_center) < 50.0:
 								if enemy.has_method("take_damage"):
 									var hit_success = enemy.take_damage(attack_damage, drag_vector)
 									if hit_success:
 										if enemy.has_method("apply_knockback"):
 											var kb_dir = (enemy.global_position - global_position).normalized()
-											enemy.apply_knockback(kb_dir * 150.0)
+											enemy.apply_knockback(kb_dir * 350.0)
 									else:
 										# Player is knocked back because attack was blocked
 										var kb_dir = (global_position - enemy.global_position).normalized()
 										apply_knockback(kb_dir * 250.0)
 
 func _physics_process(delta: float) -> void:
+	if is_dead: return
+	
+	if is_taking_hit:
+		velocity = knockback
+		knockback = knockback.lerp(Vector2.ZERO, 10.0 * delta)
+		move_and_slide()
+		return
+		
 	if is_attacking:
 		velocity = knockback
 		knockback = knockback.lerp(Vector2.ZERO, 10.0 * delta)
@@ -122,3 +198,5 @@ func _physics_process(delta: float) -> void:
 func _on_animation_finished(anim_name: StringName) -> void:
 	if anim_name == "attack_h" or anim_name == "attack_v":
 		is_attacking = false
+	elif anim_name == "take_hit":
+		is_taking_hit = false
