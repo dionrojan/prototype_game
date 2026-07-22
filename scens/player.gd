@@ -1,7 +1,7 @@
 extends CharacterBody2D
 
 @export var walk_speed: float = 120.0
-@export var run_speed: float = 220.0
+@export var run_speed: float = 176.0
 
 @onready var sprite: Sprite2D = $Sprite
 @onready var anim_player: AnimationPlayer = $AnimationPlayer
@@ -25,6 +25,7 @@ var drag_start: Vector2 = Vector2.ZERO
 var is_taking_hit: bool = false
 var is_dead: bool = false
 var knockback: Vector2 = Vector2.ZERO
+var last_block_press_time: float = -1.0
 
 func apply_knockback(force: Vector2) -> void:
 	knockback = force
@@ -46,7 +47,6 @@ func take_damage(amount: int) -> void:
 	else:
 		is_taking_hit = true
 		anim_player.play("take_hit")
-
 
 func _ready() -> void:
 	add_to_group("player")
@@ -98,6 +98,7 @@ func _input(event: InputEvent) -> void:
 		if event.button_index == MOUSE_BUTTON_RIGHT:
 			if event.pressed:
 				is_blocking = true
+				last_block_press_time = Time.get_ticks_msec() / 1000.0
 			else:
 				is_blocking = false
 				
@@ -126,28 +127,33 @@ func _input(event: InputEvent) -> void:
 					else:
 						anim_player.play("attack_v")
 						
-					# Check enemies intersecting the drag line
 					var enemies = get_tree().get_nodes_in_group("enemies")
+					var closest_enemy = null
+					var min_dist = 40.0 # Maximum hit radius
+					
 					for enemy in enemies:
-						var dist_to_player = global_position.distance_to(enemy.global_position)
-						# Make attack range more forgiving for isometric perspective
-						if dist_to_player <= attack_range * 2.0:
-							# Check if drag line passes through enemy's visual body (shifted up from feet)
-							var enemy_body_center = enemy.global_position + Vector2(0, -30)
-							var closest = Geometry2D.get_closest_point_to_segment(enemy_body_center, drag_start, drag_end)
+						var enemy_pos = enemy.global_position + Vector2(0, -30) # Account for sprite offset
+						
+						# Find exactly how close this enemy is to the swipe line
+						var point_on_segment = Geometry2D.get_closest_point_to_segment(enemy_pos, drag_start, drag_end)
+						var dist = enemy_pos.distance_to(point_on_segment)
+						
+						# Keep track of the absolute closest enemy
+						if dist < min_dist:
+							min_dist = dist
+							closest_enemy = enemy
 							
-							# Generous hit radius for phone/mouse swiping
-							if closest.distance_to(enemy_body_center) < 50.0:
-								if enemy.has_method("take_damage"):
-									var hit_success = enemy.take_damage(attack_damage, drag_vector)
-									if hit_success:
-										if enemy.has_method("apply_knockback"):
-											var kb_dir = (enemy.global_position - global_position).normalized()
-											enemy.apply_knockback(kb_dir * 350.0)
-									else:
-										# Player is knocked back because attack was blocked
-										var kb_dir = (global_position - enemy.global_position).normalized()
-										apply_knockback(kb_dir * 250.0)
+					# ONLY apply damage to the single closest enemy!
+					if closest_enemy != null:
+						var hit_success = closest_enemy.take_damage(attack_damage, drag_vector)
+						if hit_success:
+							if closest_enemy.has_method("apply_knockback"):
+								var kb_dir = (closest_enemy.global_position - global_position).normalized()
+								closest_enemy.apply_knockback(kb_dir * 350.0)
+						else:
+							# Player is knocked back because attack was blocked
+							var kb_dir = (global_position - closest_enemy.global_position).normalized()
+							apply_knockback(kb_dir * 250.0)
 
 func _physics_process(delta: float) -> void:
 	if is_dead: return

@@ -63,3 +63,8 @@ attack={
 [rendering]
 
 rendering_device/driver.windows="d3d12"
+
+[display]
+
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
