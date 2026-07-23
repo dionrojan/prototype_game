@@ -19,6 +19,7 @@ var is_attacking: bool = false
 
 var is_dragging: bool = false
 var is_blocking: bool = false
+var is_dashing: bool = false
 var drag_start: Vector2 = Vector2.ZERO
 @export var min_drag_distance: float = 30.0
 
@@ -31,7 +32,7 @@ func apply_knockback(force: Vector2) -> void:
 	knockback = force
 	
 func take_damage(amount: int) -> void:
-	if is_dead: return
+	if is_dead or is_dashing: return # Invincibility frames during dash!
 	
 	# Reset states so player doesn't get permanently stuck if an animation is interrupted!
 	is_attacking = false
@@ -111,6 +112,21 @@ func _ready() -> void:
 		anim_attack_down.track_insert_key(track_idx, i * 0.1, i)
 	anim_player.get_animation_library("").add_animation("attack_down", anim_attack_down)
 	
+	# Dynamically create dash animation
+	var anim_dash = Animation.new()
+	anim_dash.length = 0.5
+	track_idx = anim_dash.add_track(Animation.TYPE_VALUE)
+	anim_dash.track_set_path(track_idx, "Sprite:texture")
+	anim_dash.track_insert_key(track_idx, 0.0, load("res://sprites/13 - spetial dash.png"))
+	track_idx = anim_dash.add_track(Animation.TYPE_VALUE)
+	anim_dash.track_set_path(track_idx, "Sprite:hframes")
+	anim_dash.track_insert_key(track_idx, 0.0, 5)
+	track_idx = anim_dash.add_track(Animation.TYPE_VALUE)
+	anim_dash.track_set_path(track_idx, "Sprite:frame")
+	for i in range(5):
+		anim_dash.track_insert_key(track_idx, i * 0.1, i)
+	anim_player.get_animation_library("").add_animation("dash", anim_dash)
+	
 	anim_player.animation_finished.connect(_on_animation_finished)
 	anim_player.play("idle")
 
@@ -123,6 +139,21 @@ func _input(event: InputEvent) -> void:
 	
 	if event.is_action_pressed("toggle_run"):
 		is_running = !is_running
+		
+	if event is InputEventKey and event.keycode == KEY_SPACE and event.pressed and not event.echo:
+		if not is_attacking and not is_dashing and not is_taking_hit:
+			is_dashing = true
+			anim_player.play("dash")
+			
+			var dash_direction = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+			if dash_direction == Vector2.ZERO:
+				dash_direction = Vector2(-1 if sprite.flip_h else 1, 0)
+			
+			dash_direction = dash_direction.normalized()
+			
+			# Isometric squash for the dash speed!
+			var squash = Vector2(1.0, 0.5)
+			velocity = (dash_direction * 600.0) * squash
 	
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_RIGHT:
@@ -144,7 +175,7 @@ func _input(event: InputEvent) -> void:
 				var drag_end = get_global_mouse_position()
 				var drag_vector = drag_end - drag_start
 				
-				if drag_vector.length() >= min_drag_distance and not is_attacking:
+				if drag_vector.length() >= min_drag_distance and not is_attacking and not is_dashing:
 					is_attacking = true
 					
 					# Make player face the side where the attack was drawn
@@ -215,6 +246,18 @@ func _physics_process(delta: float) -> void:
 		knockback = knockback.lerp(Vector2.ZERO, 10.0 * delta)
 		move_and_slide()
 		return
+		
+	if is_dashing:
+		# Keep sliding based on velocity but slow it down gently
+		velocity = velocity.lerp(Vector2.ZERO, 3.0 * delta)
+		move_and_slide()
+		
+		# Flip sprite depending on dash movement
+		if velocity.x < 0:
+			sprite.flip_h = true
+		elif velocity.x > 0:
+			sprite.flip_h = false
+		return
 
 	# Handle movement speed based on run toggle
 	var speed = run_speed if is_running else walk_speed
@@ -250,5 +293,7 @@ func _physics_process(delta: float) -> void:
 func _on_animation_finished(anim_name: StringName) -> void:
 	if anim_name in ["attack_h", "attack_v", "attack_up", "attack_down"]:
 		is_attacking = false
+	elif anim_name == "dash":
+		is_dashing = false
 	elif anim_name == "take_hit":
 		is_taking_hit = false
