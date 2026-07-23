@@ -23,6 +23,7 @@ var knockback: Vector2 = Vector2.ZERO
 var is_stunned: bool = false
 var stun_end_time: float = 0.0
 var guard_restart_time: float = 0.0
+var combo_hits_taken: int = 0
 var is_attacking: bool = false
 var attack_cooldown: float = 0.0
 var pending_attack_dir: String = ""
@@ -44,6 +45,7 @@ func _physics_process(delta: float) -> void:
 	if is_stunned:
 		if (Time.get_ticks_msec() / 1000.0) >= stun_end_time:
 			is_stunned = false
+			combo_hits_taken = 0 # Reset stun combo diminishing returns!
 		else:
 			return
 			
@@ -310,17 +312,24 @@ func take_damage(amount: int, drag_vector: Vector2 = Vector2.ZERO) -> bool:
 			anim_player.speed_scale = 1.0
 			_end_attack(1.0)
 			
-			# Stun the skeleton for 1.4s when taking damage
-			is_stunned = true
-			stun_end_time = (Time.get_ticks_msec() / 1000.0) + 1.4
-			
-			# Break guard if hit
-			if vulnerable_dir != "none":
-				block_timer.stop()
-				vulnerable_dir = "none"
-				update_arrows()
-				guard_restart_time = (Time.get_ticks_msec() / 1000.0) + 1.4
-			
+			# Diminishing returns on stun!
+			combo_hits_taken += 1
+			var added_stun = 0.0
+			if combo_hits_taken == 1:
+				added_stun = 1.4
+			elif combo_hits_taken == 2:
+				added_stun = 1.4 * 0.30 # Add 30% stun
+			else:
+				added_stun = 0.0 # No more stun added after 2 hits!
+				
+			var current_time = Time.get_ticks_msec() / 1000.0
+			if not is_stunned:
+				is_stunned = true
+				stun_end_time = current_time + added_stun
+			else:
+				stun_end_time += added_stun
+				
+			# The skeleton continues to guard while stunned, so we DO NOT break the guard!
 			anim_player.play("take_hit")
 		
 	return true
