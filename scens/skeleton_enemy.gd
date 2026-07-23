@@ -21,6 +21,8 @@ var arrow_tex_attack = preload("res://sprites/attackarrow.png")
 
 var knockback: Vector2 = Vector2.ZERO
 var is_stunned: bool = false
+var stun_end_time: float = 0.0
+var guard_restart_time: float = 0.0
 var is_attacking: bool = false
 var attack_cooldown: float = 0.0
 var pending_attack_dir: String = ""
@@ -40,7 +42,15 @@ func _physics_process(delta: float) -> void:
 		return
 		
 	if is_stunned:
-		return
+		if (Time.get_ticks_msec() / 1000.0) >= stun_end_time:
+			is_stunned = false
+		else:
+			return
+			
+	if guard_restart_time > 0 and (Time.get_ticks_msec() / 1000.0) >= guard_restart_time:
+		guard_restart_time = 0.0
+		if health > 0 and not is_stunned:
+			start_block_cycle()
 		
 	if attack_cooldown > 0:
 		attack_cooldown -= delta
@@ -151,7 +161,8 @@ func initiate_attack() -> void:
 	get_tree().create_timer(0.8).timeout.connect(_on_defense_window_ended)
 
 func _on_defense_window_ended() -> void:
-	if health <= 0 or is_stunned:
+	# If the attack was already cancelled (e.g. by taking damage), abort!
+	if not is_attacking or health <= 0 or is_stunned:
 		_end_attack(1.0)
 		return
 		
@@ -174,7 +185,8 @@ func _end_attack(cooldown: float = 1.0) -> void:
 		update_arrows()
 
 func _execute_attack() -> void:
-	if health <= 0 or is_stunned:
+	# If the attack was cancelled while waiting for the final sword swing, abort!
+	if not is_attacking or health <= 0 or is_stunned:
 		_end_attack(1.0)
 		return
 		
@@ -258,10 +270,6 @@ func update_arrows() -> void:
 func take_damage(amount: int, drag_vector: Vector2 = Vector2.ZERO) -> bool:
 	if health <= 0: return false # Already dead
 	
-	# Always reset animation speed when hit to cancel slow-mo windup
-	anim_player.speed_scale = 1.0
-	_end_attack(1.0)
-	
 	var blocked = false
 	var current_attack_dir = ""
 	if drag_vector != Vector2.ZERO:
@@ -278,26 +286,42 @@ func take_damage(amount: int, drag_vector: Vector2 = Vector2.ZERO) -> bool:
 	if blocked:
 		print("Skeleton BLOCKED the attack from " + current_attack_dir + "!")
 		anim_player.play("block")
+		# Stun the skeleton for 0.6s when it blocks
+		is_stunned = true
+		stun_end_time = (Time.get_ticks_msec() / 1000.0) + 0.6
 		return false
 	
 	health -= amount
 	print("Skeleton took %d damage! Health remaining: %d" % [amount, health])
 	spawn_hit_effect()
 	
-	is_stunned = true
-	get_tree().create_timer(0.5).timeout.connect(func(): is_stunned = false)
-	
-	# Break guard if hit
-	if vulnerable_dir != "none":
-		block_timer.stop()
-		vulnerable_dir = "none"
-		update_arrows()
-		get_tree().create_timer(0.5).timeout.connect(start_block_cycle)
-	
 	if health <= 0:
 		die()
 	else:
-		anim_player.play("take_hit")
+		if is_attacking:
+			# SUPER ARMOR! Skeleton absorbs the hit without flinching or cancelling the attack!
+			print("Skeleton used Hyper Armor to tank the hit!")
+			
+			# Flash the sprite red briefly to show damage was taken despite no flinch
+			sprite.modulate = Color(10, 0.5, 0.5) # Overbright red
+			get_tree().create_timer(0.1).timeout.connect(func(): if is_instance_valid(sprite): sprite.modulate = Color(1, 1, 1))
+		else:
+			# Normal hit! Stagger the skeleton
+			anim_player.speed_scale = 1.0
+			_end_attack(1.0)
+			
+			# Stun the skeleton for 1.4s when taking damage
+			is_stunned = true
+			stun_end_time = (Time.get_ticks_msec() / 1000.0) + 1.4
+			
+			# Break guard if hit
+			if vulnerable_dir != "none":
+				block_timer.stop()
+				vulnerable_dir = "none"
+				update_arrows()
+				guard_restart_time = (Time.get_ticks_msec() / 1000.0) + 1.4
+			
+			anim_player.play("take_hit")
 		
 	return true
 

@@ -81,6 +81,36 @@ func _ready() -> void:
 		anim_death.track_insert_key(track_idx, i * 0.1, i)
 	anim_player.get_animation_library("").add_animation("death", anim_death)
 	
+	# Dynamically create attack_up animation
+	var anim_attack_up = Animation.new()
+	anim_attack_up.length = 0.4
+	track_idx = anim_attack_up.add_track(Animation.TYPE_VALUE)
+	anim_attack_up.track_set_path(track_idx, "Sprite:texture")
+	anim_attack_up.track_insert_key(track_idx, 0.0, load("res://sprites/7 - jump-up-attack.png"))
+	track_idx = anim_attack_up.add_track(Animation.TYPE_VALUE)
+	anim_attack_up.track_set_path(track_idx, "Sprite:hframes")
+	anim_attack_up.track_insert_key(track_idx, 0.0, 4)
+	track_idx = anim_attack_up.add_track(Animation.TYPE_VALUE)
+	anim_attack_up.track_set_path(track_idx, "Sprite:frame")
+	for i in range(4):
+		anim_attack_up.track_insert_key(track_idx, i * 0.1, i)
+	anim_player.get_animation_library("").add_animation("attack_up", anim_attack_up)
+	
+	# Dynamically create attack_down animation
+	var anim_attack_down = Animation.new()
+	anim_attack_down.length = 0.4
+	track_idx = anim_attack_down.add_track(Animation.TYPE_VALUE)
+	anim_attack_down.track_set_path(track_idx, "Sprite:texture")
+	anim_attack_down.track_insert_key(track_idx, 0.0, load("res://sprites/8 - jump-down-attack.png"))
+	track_idx = anim_attack_down.add_track(Animation.TYPE_VALUE)
+	anim_attack_down.track_set_path(track_idx, "Sprite:hframes")
+	anim_attack_down.track_insert_key(track_idx, 0.0, 4)
+	track_idx = anim_attack_down.add_track(Animation.TYPE_VALUE)
+	anim_attack_down.track_set_path(track_idx, "Sprite:frame")
+	for i in range(4):
+		anim_attack_down.track_insert_key(track_idx, i * 0.1, i)
+	anim_player.get_animation_library("").add_animation("attack_down", anim_attack_down)
+	
 	anim_player.animation_finished.connect(_on_animation_finished)
 	anim_player.play("idle")
 
@@ -121,11 +151,14 @@ func _input(event: InputEvent) -> void:
 					var drag_center = (drag_start + drag_end) / 2.0
 					sprite.flip_h = drag_center.x < global_position.x
 					
-					# Determine horizontal or vertical slash
-					if abs(drag_vector.x) > abs(drag_vector.y):
-						anim_player.play("attack_h")
+					# Play default animation based on swipe direction
+					if abs(drag_vector.y) > abs(drag_vector.x) * 1.5: # Must be distinctly vertical, not diagonal
+						if drag_vector.y < 0:
+							anim_player.play("attack_up")
+						else:
+							anim_player.play("attack_down")
 					else:
-						anim_player.play("attack_v")
+						anim_player.play("attack_h")
 						
 					var enemies = get_tree().get_nodes_in_group("enemies")
 					var closest_enemy = null
@@ -145,6 +178,19 @@ func _input(event: InputEvent) -> void:
 							
 					# ONLY apply damage to the single closest enemy!
 					if closest_enemy != null:
+						# Override animation based on enemy's exact position relative to player
+						var y_diff = closest_enemy.global_position.y - global_position.y
+						var x_diff = closest_enemy.global_position.x - global_position.x
+						
+						# If they are directly above or below (not on a diagonal)
+						if abs(y_diff) > abs(x_diff) * 1.5:
+							if y_diff < 0:
+								anim_player.play("attack_up")
+							else:
+								anim_player.play("attack_down")
+						else:
+							anim_player.play("attack_h")
+						
 						var hit_success = closest_enemy.take_damage(attack_damage, drag_vector)
 						if hit_success:
 							if closest_enemy.has_method("apply_knockback"):
@@ -202,7 +248,7 @@ func _physics_process(delta: float) -> void:
 		anim_player.play("idle")
 
 func _on_animation_finished(anim_name: StringName) -> void:
-	if anim_name == "attack_h" or anim_name == "attack_v":
+	if anim_name in ["attack_h", "attack_v", "attack_up", "attack_down"]:
 		is_attacking = false
 	elif anim_name == "take_hit":
 		is_taking_hit = false

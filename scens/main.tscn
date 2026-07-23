@@ -121,5 +121,5 @@ position = Vector2(465, 198)
 
 [node name="SkeletonEnemy" parent="." unique_id=1250882227 instance=ExtResource("3_skeleton")]
 y_sort_enabled = true
-position = Vector2(397, 237)
-max_health = 90
+position = Vector2(391, 241)
+max_health = 120

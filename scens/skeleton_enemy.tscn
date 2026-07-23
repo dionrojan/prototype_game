@@ -225,6 +225,7 @@ height = 25.999992
 
 [node name="SkeletonEnemy" type="CharacterBody2D" unique_id=1100408711]
 script = ExtResource("1_skeleton")
+max_health = 40
 
 [node name="Sprite" type="Sprite2D" parent="." unique_id=1150840774]
 texture_filter = 1
